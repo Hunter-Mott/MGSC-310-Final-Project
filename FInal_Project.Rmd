@@ -1,0 +1,410 @@
+---
+title: "[Final Project]"
+author: "[Hunter Mott, Noah Shaffer]"
+subtitle: MGSC 310 Summary Statistics 
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+---
+
+```{r setup, include=FALSE}
+
+# Please leave this code chunk as is. It makes some slight formatting changes to alter the output to be more aesthetically pleasing. 
+
+library(knitr)
+
+# Change the number in set seed to your own favorite number
+set.seed(1818)
+options(width=70)
+options(scipen=99)
+
+
+# this sets text outputted in code chunks to small
+opts_chunk$set(tidy.opts=list(width.wrap=50),tidy=TRUE, size = "vsmall")  
+opts_chunk$set(message = FALSE,                                          
+               warning = FALSE,
+               # "caching" stores objects in code chunks and only rewrites if you change things
+               cache = FALSE,                               
+               # automatically downloads dependency files
+               autodep = TRUE,
+               # 
+               cache.comments = FALSE,
+               # 
+               collapse = TRUE,
+               # change fig.width and fig.height to change the code height and width by default
+               fig.width = 5.5,  
+               fig.height = 4.5,
+               fig.align='center')
+
+
+```
+
+```{r setup-2}
+
+# Always print this out before your assignment
+sessionInfo()
+getwd()
+
+```
+
+
+<!-- ### start answering your problem set here -->
+<!-- You may export your homework in either html or pdf, with the former usually being easier. 
+     To export or compile your Rmd file: click above on 'Knit' then 'Knit to HTML' -->
+<!-- Be sure to submit both your .Rmd file and the compiled .html or .pdf file for full credit -->
+
+
+```{r setup-3}
+
+# load all your libraries in this chunk 
+library('tidyverse')
+library('ggplot2')
+library('rsample')
+library('dplyr')
+library('forcats')
+library("car")
+library('glmnet') 
+library('glmnetUtils')
+library('coefplot')
+library('ISLR')
+library('plotROC')
+library('yardstick')
+library('PerformanceAnalytics')
+library('rpart')       
+library('rpart.plot') 
+library('partykit')
+library('tidymodels')
+library('sjPlot')
+# note, do not run install.packages() inside a code chunk. install them in the console outside of a code chunk. 
+
+```
+
+1) Data Cleaning 
+```{r}
+#Read in csv file 
+cali_listing <- read_csv('REALESTATE_California.csv')
+
+#Clean dataset, take out unneeded variables, and factor certain variables 
+#Remove Outliers in Price, limit the lot type 
+cali_price_desc <- arrange(cali_listing,desc(price))
+cali_slice <- slice(cali_price_desc,1:32325)
+
+#Clean dataset, take out unneeded variables, and factor certain variables 
+cali_listing_clean <- cali_slice %>% mutate(
+                    price_000s = price/1000, 
+                    levels = as.factor(levels),
+                    homeType = as.factor(homeType),
+                      county = fct_lump(county,20),
+                     bedrooms = as.factor(bedrooms),
+                    bathrooms = as.factor(bathrooms))%>% 
+      select(-id, -stateId,-countyId,-cityId,-country,-time,-event,-state,-streetAddress,
+             -longitude,-latitude,-description,-currency,-datePostedString,-...1,
+             -zipcode, -city, -hasBadGeocode, -is_bankOwned, -is_forAuction)
+      
+                    
+               
+
+              
+
+
+```
+
+
+2) Summary Statistics 
+```{r}
+
+
+
+cali_summary <- cali_listing_clean %>% 
+                select(-price, -pricePerSquareFoot, -yearBuilt, -livingArea, -livingAreaValue,
+                       -lotAreaUnits, - buildingArea, - parking, -garageSpaces, 
+                       - hasGarage, -levels, -pool, -spa, -isNewConstruction, - 
+                         hasPetsAllowed)
+summary(cali_summary)
+
+```
+
+1st Point of Interst 
+```{r}
+#Displays relatively an increase in home listing price based homeType and YearBuilt 
+ggplot(data = cali_listing, aes(x = yearBuilt, y = price,color = factor(homeType))) +
+  geom_point() +
+  facet_wrap(~ homeType) +
+  labs(title = "Home Prics based on Year Built and Home Type", x = "Year Built", y = "Lisitng Price") +
+  theme_minimal(base_size = 16) +
+  xlim(1900,2022)+
+  ylim(.1,8000) +
+  theme(axis.text.x = element_text(angle=270)) + geom_smooth()
+
+
+
+
+```
+
+
+```{r}
+#Displays relatively no increase in home listing price based on YearBuilt 
+
+
+
+ggplot(data = cali_listing, aes(x = yearBuilt, y = price)) +
+  geom_point() +
+  labs(title = "Home Prices based on Year Built", x = "Year Built", y = "Lisitng Price") +
+  theme_minimal(base_size = 16) +
+  xlim(1900,2022)+
+  ylim(.1,8000) +
+  theme(axis.text.x = element_text(angle=270))+
+  geom_smooth()
+
+
+
+```
+
+2nd Point of Interest 
+```{r}
+
+#Shows the Frequency with certain # of bedrooms 
+ggplot(data = cali_listing_clean, aes(x = bedrooms, fill = bedrooms)) +
+  geom_bar() +
+  theme_minimal(base_size = 16) +
+  labs(title = "Frequency of houses with # of bedrooms", x = "bedrooms", y = "count")+
+  xlim(1,8)
+  
+
+
+
+
+
+```
+
+```{r}
+#Shows that the listing of a house is likely to be higher with more bedrooms 
+ggplot(data = cali_listing_clean, aes(x = bedrooms, y = price_000s)) +
+  geom_point(color = 'purple') +
+  geom_smooth()+
+  labs(title = "Price Based on the # of Bedrooms", x = "Bedrooms", y = "Listing Price") +
+  theme_minimal(base_size = 16)+
+  xlim(1,13)
+
+
+
+
+
+
+```
+
+3rd Point of Interest 
+```{r}
+filter_county <- cali_listing_clean %>% filter(price_000s>10000)
+
+
+mod_1 <- lm(price ~ county + bedrooms,
+                      data = filter_county)
+summary(mod_1)
+
+```
+
+```{r}
+#Shows how county affects home listing price 
+ggplot(data = filter_county, aes(x = yearBuilt , y = price_000s)) +
+  geom_point() +
+  facet_wrap(~ county)
+  labs(title = "Price based on the amount of bedrooms", x = "bedrooms", y = "Listing Price") +
+  theme_minimal(base_size = 16)+
+  theme(axis.text.x = element_text(angle=90))+
+    xlim(1,2025)
+
+
+```
+
+
+```{r}
+
+#county_filter <- 
+ # cali_listing_clean %>% 
+  #group_by(county) %>% 
+  #summarize(avg_price_000s = mean(price_000s), 
+            #num = n()) %>% 
+             # arrange(desc(avg_price_000s))
+
+county_filter <- cali_listing_clean %>% 
+                group_by(county) %>% 
+                summarize(avg_price_000s = mean(price_000s),
+                          num = n()) %>% 
+                arrange(desc(avg_price_000s))
+
+print(county_filter)
+
+
+
+
+#Shows the top 10 ten counties with the highest avg house listing price 
+#County heavily influences listing price 
+#Santa Barbara County, Napa County, San Mateo County,San Francisco County,
+#Marin County, San Benito County, Monterey County, Santa Clara County, Los Angeles County
+#Orange County
+
+
+
+```
+
+
+
+
+```{r}
+#Split Data into Train and Test sets 
+
+cali_split <- initial_split(cali_listing_clean, prop = 0.75)
+cali_train <- training(cali_split)
+cali_test <- testing(cali_split)
+
+
+
+```
+
+
+
+
+1st Model 
+
+```{r}
+
+#Linear Regression Model 
+mod_1 <- lm(price_000s ~ yearBuilt + homeType + 
+                        livingArea + bathrooms + bedrooms + pool + spa +
+                        county,
+                        data = cali_test)
+
+
+
+mod_2 <- lm(price_000s ~ homeType + bathrooms + bedrooms+ pool + spa + county,
+            data = cali_test)
+summary(mod_2)
+tidy(mod_2)
+#plot_model(mod_2)
+
+```
+
+2nd model 
+```{r}
+
+#create lasso model to identify the variables that price_000s 
+lasso_mod <- cv.glmnet(price_000s ~ yearBuilt + homeType + 
+              livingArea + bathrooms + bedrooms + pool + spa + county,
+                       data = cali_train,
+                       alpha = 1)
+
+#print lambda min value
+print(lasso_mod$lambda.min)
+#print lambda 1se value
+print(lasso_mod$lambda.1se)
+#print lasso model
+plot(lasso_mod)
+
+coef(ridge_mod, s = ridge_mod$lambda.min) %>% 
+  round(6)
+
+#enet_mod <- cva.glmnet(price_000s ~ yearBuilt + homeType + 
+                        #livingArea + bathrooms + bedrooms + pool + spa +
+                        #county,
+                       #data = cali_listing_clean,
+                        #alpha = seq(0,1, by = 0.1))
+
+```
+
+```{r}
+#Make Logistic regression model see what variables make a house above median value? 
+
+cali_logit_data <- cali_listing_clean %>% 
+                  mutate( 
+                    Above_med_price = ifelse(price_000s >= 750,1,0))
+
+
+
+logit_mod <- glm(Above_med_price ~ county + spa + pool,
+                  family = binomial,
+                  data = cali_logit_data)
+
+summary(logit_mod)
+print(exp(logit_mod$coefficients))
+
+
+
+```
+
+
+```{r}
+#Score the model which generates predicted probabilities 
+
+#Split Data into Train and Test sets 
+
+logit_split <- initial_split((cali_logit_data), prop = 0.75)
+cali_logit_train <- training(logit_split)
+cali_logit_test <- testing(logit_split)
+
+#Score the model which generates predicted probabilities
+
+scores_train <- predict(logit_mod, cali_logit_train, 
+                  type = "response")
+
+scores_test <- predict(logit_mod, newdata = cali_logit_test,
+            type = c("response"))
+
+#Create the results for the training and tests sets with true class and 
+# results test variables in each 
+results_train <- tibble(
+  `true_class` = as.numeric(cali_logit_train$Above_med_price),
+  `prob_event` = scores_train,
+  "type" = "Train")
+
+
+results_test <- tibble(
+  `true_class` = as.numeric(cali_logit_test$Above_med_price),
+  `prob_event` = scores_test,
+  'type' = "Test")
+
+results <- bind_rows(results_train,results_test)
+
+```
+
+
+
+```{r}
+
+#Create ROC plot for results_train and results_test 
+      rocplot_cali_train <- ggplot(results,
+                            aes(m = prob_event, d = true_class, color = type)) +
+                            geom_roc(labelsize = 3.5,
+                                     cutoffs.at = 
+                                       c(0.9,0.8,0.7,0.6,0.5,0.2,0.1))+
+                            ggtitle("ROC Plot for Trainning and Test Sets")
+                              print(rocplot_cali_train)
+                    
+#Create ROC plot for results_test
+      rocplot_cali_test <- ggplot(results_test,
+                            aes(m = prob_event, d = true_class)) +
+                            geom_roc(labelsize = 3.5,
+                                     cutoffs.at = 
+                                       c(0.9,0.8,0.7,0.6,0.5,0.2,0.1))+
+                            ggtitle("ROC Plot for Test Set")
+                              print(rocplot_cali_test)
+                              
+calc_auc(rocplot_cali_train)
+
+
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
